@@ -3,8 +3,11 @@ package cli
 import (
 	"flag"
 	"fmt"
+	"math"
+	"strings"
 
 	"github.com/reikanv/calc-cli/internal/calc"
+	"github.com/reikanv/calc-cli/pkg/strpad"
 )
 
 type XFlags struct {
@@ -19,8 +22,8 @@ func ReadFlags() (xf XFlags, err error) {
 	flag.Float64Var(&xf.delta, "deltaX", 0, "increments X")
 	flag.Parse()
 
-	if xf.delta > xf.end {
-		err = fmt.Errorf("deltaX can't be more than end: deltaX: %v end: %v", xf.delta, xf.end)
+	if (xf.delta > xf.end && xf.end > 0) || (xf.delta < xf.end && xf.end < 0) {
+		err = fmt.Errorf("invalid deltaX. deltaX: %v end: %v", xf.delta, xf.end)
 		return
 	}
 
@@ -30,34 +33,56 @@ func ReadFlags() (xf XFlags, err error) {
 	}
 
 	if xf.delta > 0 && xf.start >= xf.end {
-		err = fmt.Errorf("invalid positive range: start %v end %v", xf.start, xf.end)
+		err = fmt.Errorf("invalid positive range. start %v end %v", xf.start, xf.end)
 		return
 	}
 
 	if xf.delta < 0 && xf.start <= xf.end {
-		err = fmt.Errorf("invalid negative range: end %v start %v", xf.end, xf.start)
+		err = fmt.Errorf("invalid negative range. end %v start %v", xf.end, xf.start)
 		return
 	}
 
 	return xf, nil
 }
 
-func row(iter int, x float64) string {
+func row(iter int, x float64, pad int) string {
 	r, err := calc.Run(x)
+	paddedIter := strpad.Left(fmt.Sprintf("%v", iter), pad)
+	paddedX := strpad.Right(strpad.TrimFloat(fmt.Sprintf("%.5f", x)), pad)
 
 	if err != nil {
-		return fmt.Sprintf("%v %v ERROR", iter, x)
+		return fmt.Sprintf("%v | %v | ERROR", paddedIter, paddedX)
 	}
 
-	return fmt.Sprintf("%v %v %v", iter, x, r)
+	paddedR := strpad.Right(strpad.TrimFloat(fmt.Sprintf("%.5f", r)), pad)
+
+	return fmt.Sprintf("%v | %v | %v", paddedIter, paddedX, paddedR)
+}
+
+func shouldRun(xf XFlags, x float64) bool {
+	if xf.delta > 0 {
+		return x <= xf.end
+	}
+
+	return x >= xf.end
 }
 
 func Out(xf XFlags) {
-	fmt.Println("# x result")
+	maxFlag := math.Max(xf.start, xf.end)
+	maxColLen := len(fmt.Sprintf("%v", maxFlag)) + 4
+	tableHead := fmt.Sprintf(
+		"%s | %s | %s",
+		strpad.Left("#", maxColLen),
+		strpad.Right("x", maxColLen),
+		strpad.Right("result", maxColLen),
+	)
+	fmt.Println(tableHead)
+	fmt.Println(strings.Repeat("—", len(tableHead)+1))
+
 	i := 1
 
-	for x := xf.start; x <= xf.end; x += xf.delta {
-		fmt.Println(row(i, x))
+	for x := xf.start; shouldRun(xf, x); x += xf.delta {
+		fmt.Println(row(i, x, maxColLen))
 		i += 1
 	}
 }
